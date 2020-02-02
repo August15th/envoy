@@ -69,7 +69,7 @@ public:
   ::testing::NiceMock<Network::MockConnection> client_connection_;
   MockConnectionCallbacks client_callbacks_;
   MockResponseStreamDecoder response_decoder_;
-  StreamEncoder* request_encoder_;
+  RequestStreamEncoder* request_encoder_;
   MockStreamCallbacks client_stream_callbacks_;
 };
 

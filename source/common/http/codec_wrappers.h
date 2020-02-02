@@ -10,17 +10,17 @@ namespace Http {
  */
 class ResponseStreamDecoderWrapper : public ResponseStreamDecoder {
 public:
-  // StreamDecoder
+  // ResponseStreamDecoder
   void decode100ContinueHeaders(HeaderMapPtr&& headers) override {
     inner_.decode100ContinueHeaders(std::move(headers));
   }
 
-  void decodeHeaders(HeaderMapPtr&& headers, bool end_stream) override {
+  void decodeResponseHeaders(HeaderMapPtr&& headers, bool end_stream) override {
     if (end_stream) {
       onPreDecodeComplete();
     }
 
-    inner_.decodeHeaders(std::move(headers), end_stream);
+    inner_.decodeResponseHeaders(std::move(headers), end_stream);
 
     if (end_stream) {
       onDecodeComplete();
@@ -39,9 +39,9 @@ public:
     }
   }
 
-  void decodeTrailers(HeaderMapPtr&& trailers) override {
+  void decodeResponseTrailers(HeaderMapPtr&& trailers) override {
     onPreDecodeComplete();
-    inner_.decodeTrailers(std::move(trailers));
+    inner_.decodeResponseTrailers(std::move(trailers));
     onDecodeComplete();
   }
 
@@ -67,13 +67,9 @@ protected:
  */
 class RequestStreamEncoderWrapper : public RequestStreamEncoder {
 public:
-  // StreamEncoder
-  void encode100ContinueHeaders(const HeaderMap& headers) override {
-    inner_.encode100ContinueHeaders(headers);
-  }
-
-  void encodeHeaders(const HeaderMap& headers, bool end_stream) override {
-    inner_.encodeHeaders(headers, end_stream);
+  // RequestStreamEncoder
+  void encodeRequestHeaders(const HeaderMap& headers, bool end_stream) override {
+    inner_.encodeRequestHeaders(headers, end_stream);
     if (end_stream) {
       onEncodeComplete();
     }
@@ -86,8 +82,8 @@ public:
     }
   }
 
-  void encodeTrailers(const HeaderMap& trailers) override {
-    inner_.encodeTrailers(trailers);
+  void encodeRequestTrailers(const HeaderMap& trailers) override {
+    inner_.encodeRequestTrailers(trailers);
     onEncodeComplete();
   }
 

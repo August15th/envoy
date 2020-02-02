@@ -9,5 +9,11 @@ MockStreamEncoder::MockStreamEncoder() {
 
 MockStreamEncoder::~MockStreamEncoder() = default;
 
+MockRequestStreamEncoder::MockRequestStreamEncoder() = default;
+MockRequestStreamEncoder::~MockRequestStreamEncoder() = default;
+
+MockResponseStreamEncoder::MockResponseStreamEncoder() = default;
+MockResponseStreamEncoder::~MockResponseStreamEncoder() = default;
+
 } // namespace Http
 } // namespace Envoy

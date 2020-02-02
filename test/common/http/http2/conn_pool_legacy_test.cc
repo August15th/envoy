@@ -154,7 +154,7 @@ public:
 
   MockResponseStreamDecoder decoder_;
   ConnPoolCallbacks callbacks_;
-  Http::StreamDecoder* inner_decoder_{};
+  ResponseStreamDecoder* inner_decoder_{};
   NiceMock<MockRequestStreamEncoder> inner_encoder_;
 };
 
@@ -187,10 +187,10 @@ void Http2ConnPoolImplLegacyTest::closeClient(size_t index) {
 }
 
 void Http2ConnPoolImplLegacyTest::completeRequest(ActiveTestRequest& r) {
-  EXPECT_CALL(r.inner_encoder_, encodeHeaders(_, true));
-  r.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r.decoder_, decodeHeaders_(_, true));
-  r.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r.inner_encoder_, encodeRequestHeaders(_, true));
+  r.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r.decoder_, decodeResponseHeaders_(_, true));
+  r.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 }
 
 void Http2ConnPoolImplLegacyTest::completeRequestCloseUpstream(size_t index, ActiveTestRequest& r) {
@@ -216,14 +216,14 @@ TEST_F(Http2ConnPoolImplLegacyTest, DrainConnections) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   expectClientCreate();
   ActiveTestRequest r2(*this, 1, false);
   expectClientConnect(1, r2);
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   // This will move primary to draining and destroy draining.
   pool_.drainConnections();
@@ -255,14 +255,14 @@ TEST_F(Http2ConnPoolImplLegacyTest, PendingRequests) {
   expectClientConnect(0, r3);
 
   // Send a request through each stream.
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
-  EXPECT_CALL(r3.inner_encoder_, encodeHeaders(_, true));
-  r3.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r3.inner_encoder_, encodeRequestHeaders(_, true));
+  r3.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   // Since we now have an active connection, subsequent requests should connect immediately.
   ActiveTestRequest r4(*this, 0, true);
@@ -390,10 +390,10 @@ TEST_F(Http2ConnPoolImplLegacyTest, VerifyConnectionTimingStats) {
   EXPECT_CALL(cluster_->stats_store_,
               deliverHistogramToSinks(Property(&Stats::Metric::name, "upstream_cx_connect_ms"), _));
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r1.decoder_, decodeHeaders_(_, true));
-  r1.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.decoder_, decodeResponseHeaders_(_, true));
+  r1.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
   EXPECT_CALL(*this, onClientDestroy());
@@ -414,10 +414,10 @@ TEST_F(Http2ConnPoolImplLegacyTest, VerifyBufferLimits) {
   ActiveTestRequest r1(*this, 0, false);
 
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r1.decoder_, decodeHeaders_(_, true));
-  r1.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.decoder_, decodeResponseHeaders_(_, true));
+  r1.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
   EXPECT_CALL(*this, onClientDestroy());
@@ -433,16 +433,16 @@ TEST_F(Http2ConnPoolImplLegacyTest, RequestAndResponse) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r1.decoder_, decodeHeaders_(_, true));
-  r1.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.decoder_, decodeResponseHeaders_(_, true));
+  r1.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   ActiveTestRequest r2(*this, 0, true);
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r2.decoder_, decodeHeaders_(_, true));
-  r2.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.decoder_, decodeResponseHeaders_(_, true));
+  r2.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
   EXPECT_CALL(*this, onClientDestroy());
@@ -458,8 +458,8 @@ TEST_F(Http2ConnPoolImplLegacyTest, LocalReset) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, false));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, false);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, false));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, false);
   r1.callbacks_.outer_encoder_->getStream().resetStream(Http::StreamResetReason::LocalReset);
 
   test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
@@ -477,8 +477,8 @@ TEST_F(Http2ConnPoolImplLegacyTest, RemoteReset) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, false));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, false);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, false));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, false);
   r1.inner_encoder_.stream_.resetStream(Http::StreamResetReason::RemoteReset);
 
   test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
@@ -497,8 +497,8 @@ TEST_F(Http2ConnPoolImplLegacyTest, DrainDisconnectWithActiveRequest) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   ReadyWatcher drained;
   pool_.addDrainedCallback([&]() -> void { drained.ready(); });
@@ -520,21 +520,21 @@ TEST_F(Http2ConnPoolImplLegacyTest, DrainDisconnectDrainingWithActiveRequest) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   expectClientCreate();
   ActiveTestRequest r2(*this, 1, false);
   expectClientConnect(1, r2);
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   ReadyWatcher drained;
   pool_.addDrainedCallback([&]() -> void { drained.ready(); });
 
   EXPECT_CALL(dispatcher_, deferredDelete_(_));
-  EXPECT_CALL(r2.decoder_, decodeHeaders_(_, true));
-  r2.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r2.decoder_, decodeResponseHeaders_(_, true));
+  r2.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
   EXPECT_CALL(*this, onClientDestroy());
   dispatcher_.clearDeferredDeleteList();
 
@@ -555,28 +555,28 @@ TEST_F(Http2ConnPoolImplLegacyTest, DrainPrimary) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   expectClientCreate();
   ActiveTestRequest r2(*this, 1, false);
   expectClientConnect(1, r2);
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   ReadyWatcher drained;
   pool_.addDrainedCallback([&]() -> void { drained.ready(); });
 
   EXPECT_CALL(dispatcher_, deferredDelete_(_));
-  EXPECT_CALL(r2.decoder_, decodeHeaders_(_, true));
-  r2.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r2.decoder_, decodeResponseHeaders_(_, true));
+  r2.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
   EXPECT_CALL(*this, onClientDestroy());
   dispatcher_.clearDeferredDeleteList();
 
   EXPECT_CALL(dispatcher_, deferredDelete_(_));
   EXPECT_CALL(drained, ready());
-  EXPECT_CALL(r1.decoder_, decodeHeaders_(_, true));
-  r1.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r1.decoder_, decodeResponseHeaders_(_, true));
+  r1.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   EXPECT_CALL(*this, onClientDestroy());
   dispatcher_.clearDeferredDeleteList();
@@ -589,10 +589,10 @@ TEST_F(Http2ConnPoolImplLegacyTest, DrainPrimaryNoActiveRequest) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r1.decoder_, decodeHeaders_(_, true));
-  r1.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.decoder_, decodeResponseHeaders_(_, true));
+  r1.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   EXPECT_CALL(dispatcher_, deferredDelete_(_));
   expectClientCreate();
@@ -600,10 +600,10 @@ TEST_F(Http2ConnPoolImplLegacyTest, DrainPrimaryNoActiveRequest) {
   expectClientConnect(1, r2);
   EXPECT_CALL(*this, onClientDestroy());
   dispatcher_.clearDeferredDeleteList();
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r2.decoder_, decodeHeaders_(_, true));
-  r2.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.decoder_, decodeResponseHeaders_(_, true));
+  r2.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   ReadyWatcher drained;
   EXPECT_CALL(dispatcher_, deferredDelete_(_));
@@ -632,10 +632,10 @@ TEST_F(Http2ConnPoolImplLegacyTest, ConnectTimeout) {
   expectClientCreate();
   ActiveTestRequest r2(*this, 1, false);
   expectClientConnect(1, r2);
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r2.decoder_, decodeHeaders_(_, true));
-  r2.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.decoder_, decodeResponseHeaders_(_, true));
+  r2.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   test_clients_[1].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
   EXPECT_CALL(*this, onClientDestroy());
@@ -657,8 +657,8 @@ TEST_F(Http2ConnPoolImplLegacyTest, MaxGlobalRequests) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
 
   ConnPoolCallbacks callbacks;
   MockResponseStreamDecoder decoder;
@@ -679,20 +679,20 @@ TEST_F(Http2ConnPoolImplLegacyTest, GoAway) {
   expectClientCreate();
   ActiveTestRequest r1(*this, 0, false);
   expectClientConnect(0, r1);
-  EXPECT_CALL(r1.inner_encoder_, encodeHeaders(_, true));
-  r1.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r1.decoder_, decodeHeaders_(_, true));
-  r1.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r1.inner_encoder_, encodeRequestHeaders(_, true));
+  r1.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r1.decoder_, decodeResponseHeaders_(_, true));
+  r1.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   test_clients_[0].codec_client_->raiseGoAway();
 
   expectClientCreate();
   ActiveTestRequest r2(*this, 1, false);
   expectClientConnect(1, r2);
-  EXPECT_CALL(r2.inner_encoder_, encodeHeaders(_, true));
-  r2.callbacks_.outer_encoder_->encodeHeaders(HeaderMapImpl{}, true);
-  EXPECT_CALL(r2.decoder_, decodeHeaders_(_, true));
-  r2.inner_decoder_->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
+  EXPECT_CALL(r2.inner_encoder_, encodeRequestHeaders(_, true));
+  r2.callbacks_.outer_encoder_->encodeRequestHeaders(HeaderMapImpl{}, true);
+  EXPECT_CALL(r2.decoder_, decodeResponseHeaders_(_, true));
+  r2.inner_decoder_->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, true);
 
   test_clients_[1].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
   test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);

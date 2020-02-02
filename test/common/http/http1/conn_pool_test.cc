@@ -189,7 +189,7 @@ struct ActiveTestRequest {
     Http::HeaderMapPtr response_headers(
         new TestHeaderMapImpl{{":status", "200"}, {"x-envoy-upstream-canary", "true"}});
 
-    inner_decoder_->decodeHeaders(std::move(response_headers), !with_body);
+    inner_decoder_->decodeResponseHeaders(std::move(response_headers), !with_body);
     if (with_body) {
       Buffer::OwnedImpl data;
       inner_decoder_->decodeData(data, true);
@@ -202,14 +202,16 @@ struct ActiveTestRequest {
     EXPECT_CALL(callbacks_.pool_ready_, ready());
   }
 
-  void startRequest() { callbacks_.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true); }
+  void startRequest() {
+    callbacks_.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
+  }
 
   Http1ConnPoolImplTest& parent_;
   size_t client_index_;
   NiceMock<MockResponseStreamDecoder> outer_decoder_;
   Http::ConnectionPool::Cancellable* handle_{};
   NiceMock<MockRequestStreamEncoder> request_encoder_;
-  Http::StreamDecoder* inner_decoder_{};
+  Http::ResponseStreamDecoder* inner_decoder_{};
   ConnPoolCallbacks callbacks_;
 };
 
@@ -515,7 +517,7 @@ TEST_F(Http1ConnPoolImplTest, DisconnectWhileBound) {
   EXPECT_NE(nullptr, handle);
 
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
@@ -560,7 +562,7 @@ TEST_F(Http1ConnPoolImplTest, MaxConnections) {
 
   // Connect event will bind to request 1.
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
@@ -573,16 +575,16 @@ TEST_F(Http1ConnPoolImplTest, MaxConnections) {
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks2.pool_ready_, ready());
 
-  callbacks.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
   Http::HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
 
   conn_pool_.expectAndRunUpstreamReady();
-  callbacks2.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks2.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
   // N.B. clang_tidy insists that we use std::make_unique which can not infer std::initialize_list.
   response_headers = std::make_unique<TestHeaderMapImpl>(
       std::initializer_list<std::pair<std::string, std::string>>{{":status", "200"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
 
   // Cause the connection to go away.
   EXPECT_CALL(conn_pool_, onClientDestroy());
@@ -615,7 +617,7 @@ TEST_F(Http1ConnPoolImplTest, ConnectionCloseWithoutHeader) {
 
   // Connect event will bind to request 1.
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
@@ -625,9 +627,9 @@ TEST_F(Http1ConnPoolImplTest, ConnectionCloseWithoutHeader) {
   // Finishing request 1 will schedule binding the connection to request 2.
   conn_pool_.expectEnableUpstreamReady();
 
-  callbacks.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
   Http::HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
 
   // Cause the connection to go away.
   conn_pool_.expectClientCreate();
@@ -642,11 +644,11 @@ TEST_F(Http1ConnPoolImplTest, ConnectionCloseWithoutHeader) {
   EXPECT_CALL(callbacks2.pool_ready_, ready());
   conn_pool_.test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::Connected);
 
-  callbacks2.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks2.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
   // N.B. clang_tidy insists that we use std::make_unique which can not infer std::initialize_list.
   response_headers = std::make_unique<TestHeaderMapImpl>(
       std::initializer_list<std::pair<std::string, std::string>>{{":status", "200"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
 
   EXPECT_CALL(conn_pool_, onClientDestroy());
   conn_pool_.test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
@@ -668,19 +670,19 @@ TEST_F(Http1ConnPoolImplTest, ConnectionCloseHeader) {
   EXPECT_NE(nullptr, handle);
 
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
 
   conn_pool_.test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::Connected);
-  callbacks.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
 
   // Response with 'connection: close' which should cause the connection to go away.
   EXPECT_CALL(conn_pool_, onClientDestroy());
   Http::HeaderMapPtr response_headers(
       new TestHeaderMapImpl{{":status", "200"}, {"Connection", "Close"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
   dispatcher_.clearDeferredDeleteList();
 
   EXPECT_EQ(0U, cluster_->stats_.upstream_cx_destroy_with_active_rq_.value());
@@ -701,19 +703,19 @@ TEST_F(Http1ConnPoolImplTest, ProxyConnectionCloseHeader) {
   EXPECT_NE(nullptr, handle);
 
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
 
   conn_pool_.test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::Connected);
-  callbacks.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
 
   // Response with 'proxy-connection: close' which should cause the connection to go away.
   EXPECT_CALL(conn_pool_, onClientDestroy());
   Http::HeaderMapPtr response_headers(
       new TestHeaderMapImpl{{":status", "200"}, {"Proxy-Connection", "Close"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
   dispatcher_.clearDeferredDeleteList();
 
   EXPECT_EQ(0U, cluster_->stats_.upstream_cx_destroy_with_active_rq_.value());
@@ -734,19 +736,19 @@ TEST_F(Http1ConnPoolImplTest, Http10NoConnectionKeepAlive) {
   EXPECT_NE(nullptr, handle);
 
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
 
   conn_pool_.test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::Connected);
-  callbacks.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
 
   // Response without 'connection: keep-alive' which should cause the connection to go away.
   EXPECT_CALL(conn_pool_, onClientDestroy());
   Http::HeaderMapPtr response_headers(
       new TestHeaderMapImpl{{":protocol", "HTTP/1.0"}, {":status", "200"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
   dispatcher_.clearDeferredDeleteList();
 
   EXPECT_EQ(0U, cluster_->stats_.upstream_cx_destroy_with_active_rq_.value());
@@ -769,18 +771,18 @@ TEST_F(Http1ConnPoolImplTest, MaxRequestsPerConnection) {
   EXPECT_NE(nullptr, handle);
 
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
 
   conn_pool_.test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::Connected);
-  callbacks.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
 
   // Response with 'connection: close' which should cause the connection to go away.
   EXPECT_CALL(conn_pool_, onClientDestroy());
   Http::HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  inner_decoder->decodeHeaders(std::move(response_headers), true);
+  inner_decoder->decodeResponseHeaders(std::move(response_headers), true);
   dispatcher_.clearDeferredDeleteList();
 
   EXPECT_EQ(0U, cluster_->stats_.upstream_cx_destroy_with_active_rq_.value());
@@ -872,16 +874,16 @@ TEST_F(Http1ConnPoolImplTest, RemoteCloseToCompleteResponse) {
   EXPECT_NE(nullptr, handle);
 
   NiceMock<MockRequestStreamEncoder> request_encoder;
-  Http::StreamDecoder* inner_decoder;
+  ResponseStreamDecoder* inner_decoder;
   EXPECT_CALL(*conn_pool_.test_clients_[0].codec_, newStream(_))
       .WillOnce(DoAll(SaveArgAddress(&inner_decoder), ReturnRef(request_encoder)));
   EXPECT_CALL(callbacks.pool_ready_, ready());
   EXPECT_CALL(*conn_pool_.test_clients_[0].connect_timer_, disableTimer());
   conn_pool_.test_clients_[0].connection_->raiseEvent(Network::ConnectionEvent::Connected);
 
-  callbacks.outer_encoder_->encodeHeaders(TestHeaderMapImpl{}, true);
+  callbacks.outer_encoder_->encodeRequestHeaders(TestHeaderMapImpl{}, true);
 
-  inner_decoder->decodeHeaders(HeaderMapPtr{new HeaderMapImpl{}}, false);
+  inner_decoder->decodeResponseHeaders(HeaderMapPtr{new HeaderMapImpl{}}, false);
   Buffer::OwnedImpl dummy_data("12345");
   inner_decoder->decodeData(dummy_data, false);
 

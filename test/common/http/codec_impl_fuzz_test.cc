@@ -89,7 +89,8 @@ public:
   struct DirectionalState {
     // The request encode and response decoder belong to the client, the
     // response encoder and request decoder belong to the server.
-    StreamEncoder* encoder_;
+    RequestStreamEncoder* request_encoder_;
+    ResponseStreamEncoder* response_encoder_;
     NiceMock<MockResponseStreamDecoder> response_decoder_;
     NiceMock<MockRequestStreamDecoder> request_decoder_;
     NiceMock<MockStreamCallbacks> stream_callbacks_;
@@ -116,7 +117,7 @@ public:
   } request_, response_;
 
   HttpStream(ClientConnection& client, const TestHeaderMapImpl& request_headers, bool end_stream) {
-    request_.encoder_ = &client.newStream(response_.response_decoder_);
+    request_.request_encoder_ = &client.newStream(response_.response_decoder_);
     ON_CALL(request_.stream_callbacks_, onResetStream(_, _))
         .WillByDefault(InvokeWithoutArgs([this] {
           ENVOY_LOG_MISC(trace, "reset request for stream index {}", stream_index_);
@@ -127,32 +128,32 @@ public:
           ENVOY_LOG_MISC(trace, "reset response for stream index {}", stream_index_);
           resetStream();
         }));
-    ON_CALL(request_.request_decoder_, decodeHeaders_(_, true))
+    ON_CALL(request_.request_decoder_, decodeRequestHeaders_(_, true))
         .WillByDefault(InvokeWithoutArgs([this] {
           // The HTTP/1 codec needs this to cleanup any latent stream resources.
-          response_.encoder_->getStream().resetStream(StreamResetReason::LocalReset);
+          response_.response_encoder_->getStream().resetStream(StreamResetReason::LocalReset);
           request_.closeRemote();
         }));
     ON_CALL(request_.request_decoder_, decodeData(_, true)).WillByDefault(InvokeWithoutArgs([this] {
       // The HTTP/1 codec needs this to cleanup any latent stream resources.
-      response_.encoder_->getStream().resetStream(StreamResetReason::LocalReset);
+      response_.response_encoder_->getStream().resetStream(StreamResetReason::LocalReset);
       request_.closeRemote();
     }));
-    ON_CALL(request_.request_decoder_, decodeTrailers_(_)).WillByDefault(InvokeWithoutArgs([this] {
+    ON_CALL(request_.request_decoder_, decodeRequestTrailers_(_)).WillByDefault(InvokeWithoutArgs([this] {
       // The HTTP/1 codec needs this to cleanup any latent stream resources.
-      response_.encoder_->getStream().resetStream(StreamResetReason::LocalReset);
+      response_.response_encoder_->getStream().resetStream(StreamResetReason::LocalReset);
       request_.closeRemote();
     }));
-    ON_CALL(response_.response_decoder_, decodeHeaders_(_, true))
+    ON_CALL(response_.response_decoder_, decodeResponseHeaders_(_, true))
         .WillByDefault(InvokeWithoutArgs([this] { response_.closeRemote(); }));
     ON_CALL(response_.response_decoder_, decodeData(_, true))
         .WillByDefault(InvokeWithoutArgs([this] { response_.closeRemote(); }));
-    ON_CALL(response_.response_decoder_, decodeTrailers_(_))
+    ON_CALL(response_.response_decoder_, decodeResponseTrailers_(_))
         .WillByDefault(InvokeWithoutArgs([this] { response_.closeRemote(); }));
     if (!end_stream) {
-      request_.encoder_->getStream().addCallbacks(request_.stream_callbacks_);
+      request_.request_encoder_->getStream().addCallbacks(request_.stream_callbacks_);
     }
-    request_.encoder_->encodeHeaders(request_headers, end_stream);
+    request_.request_encoder_->encodeRequestHeaders(request_headers, end_stream);
     request_.stream_state_ = end_stream ? StreamState::Closed : StreamState::PendingDataOrTrailers;
     response_.stream_state_ = StreamState::PendingHeaders;
   }
@@ -175,7 +176,7 @@ public:
         Http::TestHeaderMapImpl headers =
             fromSanitizedHeaders(directional_action.continue_headers());
         headers.setReferenceKey(Headers::get().Status, "100");
-        state.encoder_->encode100ContinueHeaders(headers);
+        state.request_encoder_->encode100ContinueHeaders(headers);
       }
       break;
     }
@@ -410,7 +411,7 @@ void codecFuzz(const test::common::http::CodecImplFuzzTestCase& input, HttpVersi
         auto stream_ptr = pending_streams.front()->removeFromList(pending_streams);
         HttpStream* const stream = stream_ptr.get();
         stream_ptr->moveIntoListBack(std::move(stream_ptr), streams);
-        stream->response_.encoder_ = &encoder;
+        stream->response_.response_encoder_ = &encoder;
         encoder.getStream().addCallbacks(stream->response_.stream_callbacks_);
         stream->stream_index_ = streams.size() - 1;
         return stream->request_.request_decoder_;

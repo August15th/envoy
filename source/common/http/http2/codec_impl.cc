@@ -88,7 +88,7 @@ void ConnectionImpl::StreamImpl::buildHeaders(std::vector<nghttp2_nv>& final_hea
       &final_headers);
 }
 
-void ConnectionImpl::StreamImpl::encode100ContinueHeaders(const HeaderMap& headers) {
+void ConnectionImpl::ServerStreamImpl::encode100ContinueHeaders(const HeaderMap& headers) {
   ASSERT(headers.Status()->value() == "100");
   encodeHeaders(headers, false);
 }
@@ -185,9 +185,26 @@ void ConnectionImpl::StreamImpl::pendingRecvBufferLowWatermark() {
   readDisable(false);
 }
 
-void ConnectionImpl::StreamImpl::decodeHeaders() {
+void ConnectionImpl::ClientStreamImpl::decodeHeaders() {
+  if (headers_->Status()->value() == "100") {
+    ASSERT(!remote_end_stream_);
+    response_decoder_.decode100ContinueHeaders(std::move(headers_));
+  } else {
+    response_decoder_.decodeResponseHeaders(std::move(headers_), remote_end_stream_);
+  }
+}
+
+void ConnectionImpl::ClientStreamImpl::decodeTrailers() {
+  response_decoder_.decodeResponseTrailers(std::move(headers_));
+}
+
+void ConnectionImpl::ServerStreamImpl::decodeHeaders() {
   maybeTransformUpgradeFromH2ToH1();
-  decoder().decodeHeaders(std::move(headers_), remote_end_stream_);
+  request_decoder_->decodeRequestHeaders(std::move(headers_), remote_end_stream_);
+}
+
+void ConnectionImpl::ServerStreamImpl::decodeTrailers() {
+  request_decoder_->decodeRequestTrailers(std::move(headers_));
 }
 
 void ConnectionImpl::StreamImpl::pendingSendBufferHighWatermark() {
@@ -492,14 +509,7 @@ int ConnectionImpl::onFrameReceived(const nghttp2_frame* frame) {
       if (CodeUtility::is1xx(Http::Utility::getResponseStatus(*stream->headers_))) {
         stream->waiting_for_non_informational_headers_ = true;
       }
-
-      if (stream->headers_->Status()->value() == "100") {
-        ASSERT(!stream->remote_end_stream_);
-        stream->decoder().decode100ContinueHeaders(std::move(stream->headers_));
-      } else {
-        stream->decodeHeaders();
-      }
-      break;
+      FALLTHRU;
     }
 
     case NGHTTP2_HCAT_REQUEST: {
@@ -522,7 +532,7 @@ int ConnectionImpl::onFrameReceived(const nghttp2_frame* frame) {
             stats_.too_many_header_frames_.inc();
             throw CodecProtocolException("Unexpected 'trailers' with no end stream.");
           } else {
-            stream->decoder().decodeTrailers(std::move(stream->headers_));
+            stream->decodeTrailers();
           }
         } else {
           ASSERT(!nghttp2_session_check_server_session(session_));

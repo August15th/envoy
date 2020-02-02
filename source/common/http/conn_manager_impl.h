@@ -504,11 +504,12 @@ private:
     void onBelowWriteBufferLowWatermark() override;
 
     // Http::StreamDecoder
-    void decode100ContinueHeaders(HeaderMapPtr&&) override { NOT_REACHED_GCOVR_EXCL_LINE; }
-    void decodeHeaders(HeaderMapPtr&& headers, bool end_stream) override;
     void decodeData(Buffer::Instance& data, bool end_stream) override;
-    void decodeTrailers(HeaderMapPtr&& trailers) override;
     void decodeMetadata(MetadataMapPtr&&) override;
+
+    // Http::RequestStreamDecoder
+    void decodeRequestHeaders(HeaderMapPtr&& headers, bool end_stream) override;
+    void decodeRequestTrailers(HeaderMapPtr&& trailers) override;
 
     // Http::FilterChainFactoryCallbacks
     void addStreamDecoderFilter(StreamDecoderFilterSharedPtr filter) override {

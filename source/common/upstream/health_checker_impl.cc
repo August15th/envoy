@@ -198,7 +198,7 @@ void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::onDeferredDelete() {
   }
 }
 
-void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::decodeHeaders(
+void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::decodeResponseHeaders(
     Http::HeaderMapPtr&& headers, bool end_stream) {
   ASSERT(!response_headers_);
   response_headers_ = std::move(headers);
@@ -228,7 +228,7 @@ void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::onInterval() {
     expect_reset_ = false;
   }
 
-  Http::StreamEncoder* request_encoder = &client_->newStream(*this);
+  Http::RequestStreamEncoder* request_encoder = &client_->newStream(*this);
   request_encoder->getStream().addCallbacks(*this);
 
   Http::HeaderMapImpl request_headers{
@@ -243,7 +243,7 @@ void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::onInterval() {
   stream_info.setDownstreamRemoteAddress(local_address_);
   stream_info.onUpstreamHostSelected(host_);
   parent_.request_headers_parser_->evaluateHeaders(request_headers, stream_info);
-  request_encoder->encodeHeaders(request_headers, true);
+  request_encoder->encodeRequestHeaders(request_headers, true);
 }
 
 void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::onResetStream(Http::StreamResetReason,
@@ -538,7 +538,7 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onDeferredDelete() {
   }
 }
 
-void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::decodeHeaders(
+void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::decodeResponseHeaders(
     Http::HeaderMapPtr&& headers, bool end_stream) {
   const auto http_response_status = Http::Utility::getResponseStatus(*headers);
   if (http_response_status != enumToInt(Http::Code::OK)) {
@@ -606,7 +606,7 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::decodeData(Buffer::Ins
   }
 }
 
-void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::decodeTrailers(
+void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::decodeResponseTrailers(
     Http::HeaderMapPtr&& trailers) {
   auto maybe_grpc_status = Grpc::Common::getGrpcStatus(*trailers);
   auto grpc_status =
@@ -654,7 +654,7 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onInterval() {
   Router::FilterUtility::setUpstreamScheme(
       headers_message->headers(), host_->transportSocketFactory().implementsSecureTransport());
 
-  request_encoder_->encodeHeaders(headers_message->headers(), false);
+  request_encoder_->encodeRequestHeaders(headers_message->headers(), false);
 
   grpc::health::v1::HealthCheckRequest request;
   if (parent_.service_name_.has_value()) {

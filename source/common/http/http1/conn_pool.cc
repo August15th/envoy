@@ -82,7 +82,7 @@ ConnPoolImpl::StreamWrapper::~StreamWrapper() {
 
 void ConnPoolImpl::StreamWrapper::onEncodeComplete() { encode_complete_ = true; }
 
-void ConnPoolImpl::StreamWrapper::decodeHeaders(HeaderMapPtr&& headers, bool end_stream) {
+void ConnPoolImpl::StreamWrapper::decodeResponseHeaders(HeaderMapPtr&& headers, bool end_stream) {
   // If Connection: close OR
   //    Http/1.0 and not Connection: keep-alive OR
   //    Proxy-Connection: close
@@ -100,7 +100,7 @@ void ConnPoolImpl::StreamWrapper::decodeHeaders(HeaderMapPtr&& headers, bool end
     close_connection_ = true;
   }
 
-  ResponseStreamDecoderWrapper::decodeHeaders(std::move(headers), end_stream);
+  ResponseStreamDecoderWrapper::decodeResponseHeaders(std::move(headers), end_stream);
 }
 
 void ConnPoolImpl::StreamWrapper::onDecodeComplete() {

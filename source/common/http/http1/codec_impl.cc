@@ -63,9 +63,9 @@ const std::string StreamEncoderImpl::LAST_CHUNK = "0\r\n";
 
 StreamEncoderImpl::StreamEncoderImpl(ConnectionImpl& connection,
                                      HeaderKeyFormatter* header_key_formatter)
-    : connection_(connection), header_key_formatter_(header_key_formatter), chunk_encoding_(true),
-      processing_100_continue_(false), is_response_to_head_request_(false),
-      is_content_length_allowed_(true) {
+    : connection_(connection), chunk_encoding_(true), processing_100_continue_(false),
+      is_response_to_head_request_(false), is_content_length_allowed_(true),
+      header_key_formatter_(header_key_formatter) {
   if (connection_.connection().aboveHighWatermark()) {
     runHighWatermarkCallbacks();
   }
@@ -94,10 +94,10 @@ void StreamEncoderImpl::encodeFormattedHeader(absl::string_view key, absl::strin
   }
 }
 
-void StreamEncoderImpl::encode100ContinueHeaders(const HeaderMap& headers) {
+void ResponseStreamEncoderImpl::encode100ContinueHeaders(const HeaderMap& headers) {
   ASSERT(headers.Status()->value() == "100");
   processing_100_continue_ = true;
-  encodeHeaders(headers, false);
+  encodeResponseHeaders(headers, false);
   processing_100_continue_ = false;
 }
 
@@ -274,7 +274,7 @@ const Network::Address::InstanceConstSharedPtr& StreamEncoderImpl::connectionLoc
 static const char RESPONSE_PREFIX[] = "HTTP/1.1 ";
 static const char HTTP_10_RESPONSE_PREFIX[] = "HTTP/1.0 ";
 
-void ResponseStreamEncoderImpl::encodeHeaders(const HeaderMap& headers, bool end_stream) {
+void ResponseStreamEncoderImpl::encodeResponseHeaders(const HeaderMap& headers, bool end_stream) {
   started_response_ = true;
   uint64_t numeric_status = Utility::getResponseStatus(headers);
 
@@ -307,7 +307,7 @@ void ResponseStreamEncoderImpl::encodeHeaders(const HeaderMap& headers, bool end
 
 static const char REQUEST_POSTFIX[] = " HTTP/1.1\r\n";
 
-void RequestStreamEncoderImpl::encodeHeaders(const HeaderMap& headers, bool end_stream) {
+void RequestStreamEncoderImpl::encodeRequestHeaders(const HeaderMap& headers, bool end_stream) {
   const HeaderEntry* method = headers.Method();
   const HeaderEntry* path = headers.Path();
   if (!method || !path) {
@@ -733,7 +733,7 @@ int ServerConnectionImpl::onHeadersComplete(HeaderMapImplPtr&& headers) {
     // encoding because end stream with zero body length has not yet been indicated.
     if (parser_.flags & F_CHUNKED ||
         (parser_.content_length > 0 && parser_.content_length != ULLONG_MAX) || handling_upgrade_) {
-      active_request_->request_decoder_->decodeHeaders(std::move(headers), false);
+      active_request_->request_decoder_->decodeRequestHeaders(std::move(headers), false);
 
       // If the connection has been closed (or is closing) after decoding headers, pause the parser
       // so we return control to the caller.
@@ -776,11 +776,11 @@ void ServerConnectionImpl::onMessageComplete(HeaderMapImplPtr&& trailers) {
   if (active_request_) {
     active_request_->remote_complete_ = true;
     if (deferred_end_stream_headers_) {
-      active_request_->request_decoder_->decodeHeaders(std::move(deferred_end_stream_headers_),
-                                                       true);
+      active_request_->request_decoder_->decodeRequestHeaders(
+          std::move(deferred_end_stream_headers_), true);
       deferred_end_stream_headers_.reset();
     } else if (processing_trailers_) {
-      active_request_->request_decoder_->decodeTrailers(std::move(trailers));
+      active_request_->request_decoder_->decodeRequestTrailers(std::move(trailers));
     } else {
       Buffer::OwnedImpl buffer;
       active_request_->request_decoder_->decodeData(buffer, true);
@@ -881,7 +881,7 @@ int ClientConnectionImpl::onHeadersComplete(HeaderMapImplPtr&& headers) {
     } else if (cannotHaveBody()) {
       deferred_end_stream_headers_ = std::move(headers);
     } else {
-      pending_responses_.front().decoder_->decodeHeaders(std::move(headers), false);
+      pending_responses_.front().decoder_->decodeResponseHeaders(std::move(headers), false);
     }
   }
 
@@ -923,10 +923,10 @@ void ClientConnectionImpl::onMessageComplete(HeaderMapImplPtr&& trailers) {
     }
 
     if (deferred_end_stream_headers_) {
-      response.decoder_->decodeHeaders(std::move(deferred_end_stream_headers_), true);
+      response.decoder_->decodeResponseHeaders(std::move(deferred_end_stream_headers_), true);
       deferred_end_stream_headers_.reset();
     } else if (processing_trailers_) {
-      response.decoder_->decodeTrailers(std::move(trailers));
+      response.decoder_->decodeResponseTrailers(std::move(trailers));
     } else {
       Buffer::OwnedImpl buffer;
       response.decoder_->decodeData(buffer, true);

@@ -46,11 +46,11 @@ class StreamEncoderImpl : public virtual StreamEncoder,
                           Logger::Loggable<Logger::Id::http>,
                           public StreamCallbackHelper {
 public:
+  void encodeHeaders(const HeaderMap& headers, bool end_stream);
+  void encodeTrailers(const HeaderMap& headers);
+
   // Http::StreamEncoder
-  void encode100ContinueHeaders(const HeaderMap& headers) override;
-  void encodeHeaders(const HeaderMap& headers, bool end_stream) override;
   void encodeData(Buffer::Instance& data, bool end_stream) override;
-  void encodeTrailers(const HeaderMap& trailers) override;
   void encodeMetadata(const MetadataMapVector&) override;
   Stream& getStream() override { return *this; }
 
@@ -74,6 +74,11 @@ protected:
 
   ConnectionImpl& connection_;
   void setIsContentLengthAllowed(bool value) { is_content_length_allowed_ = value; }
+
+  bool chunk_encoding_ : 1;
+  bool processing_100_continue_ : 1;
+  bool is_response_to_head_request_ : 1;
+  bool is_content_length_allowed_ : 1;
 
 private:
   /**
@@ -100,10 +105,6 @@ private:
   void encodeFormattedHeader(absl::string_view key, absl::string_view value);
 
   const HeaderKeyFormatter* const header_key_formatter_;
-  bool chunk_encoding_ : 1;
-  bool processing_100_continue_ : 1;
-  bool is_response_to_head_request_ : 1;
-  bool is_content_length_allowed_ : 1;
   absl::string_view details_;
 };
 
@@ -117,8 +118,10 @@ public:
 
   bool startedResponse() { return started_response_; }
 
-  // Http::StreamEncoder
-  void encodeHeaders(const HeaderMap& headers, bool end_stream) override;
+  // Http::ResponseStreamEncoder
+  void encode100ContinueHeaders(const HeaderMap& headers) override;
+  void encodeResponseHeaders(const HeaderMap& headers, bool end_stream) override;
+  void encodeResponseTrailers(const HeaderMap& trailers) override { encodeTrailers(trailers); }
 
 private:
   bool started_response_{};
@@ -133,8 +136,9 @@ public:
       : StreamEncoderImpl(connection, header_key_formatter) {}
   bool headRequest() { return head_request_; }
 
-  // Http::StreamEncoder
-  void encodeHeaders(const HeaderMap& headers, bool end_stream) override;
+  // Http::RequestStreamEncoder
+  void encodeRequestHeaders(const HeaderMap& headers, bool end_stream) override;
+  void encodeRequestTrailers(const HeaderMap& trailers) override { encodeTrailers(trailers); }
 
 private:
   bool head_request_{};
@@ -341,7 +345,7 @@ private:
         : response_encoder_(connection, header_key_formatter) {}
 
     HeaderString request_url_;
-    StreamDecoder* request_decoder_{};
+    RequestStreamDecoder* request_decoder_{};
     ResponseStreamEncoderImpl response_encoder_;
     bool remote_complete_{};
   };
@@ -388,9 +392,9 @@ public:
 
 private:
   struct PendingResponse {
-    PendingResponse(StreamDecoder* decoder) : decoder_(decoder) {}
+    PendingResponse(ResponseStreamDecoder* decoder) : decoder_(decoder) {}
 
-    StreamDecoder* decoder_;
+    ResponseStreamDecoder* decoder_;
     bool head_request_{};
   };
 

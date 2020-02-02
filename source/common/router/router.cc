@@ -1495,7 +1495,7 @@ void Filter::UpstreamRequest::decode100ContinueHeaders(Http::HeaderMapPtr&& head
   parent_.onUpstream100ContinueHeaders(std::move(headers), *this);
 }
 
-void Filter::UpstreamRequest::decodeHeaders(Http::HeaderMapPtr&& headers, bool end_stream) {
+void Filter::UpstreamRequest::decodeResponseHeaders(Http::HeaderMapPtr&& headers, bool end_stream) {
   ScopeTrackerScopeState scope(&parent_.callbacks_->scope(), parent_.callbacks_->dispatcher());
 
   // TODO(rodaine): This is actually measuring after the headers are parsed and not the first
@@ -1520,7 +1520,7 @@ void Filter::UpstreamRequest::decodeData(Buffer::Instance& data, bool end_stream
   parent_.onUpstreamData(data, *this, end_stream);
 }
 
-void Filter::UpstreamRequest::decodeTrailers(Http::HeaderMapPtr&& trailers) {
+void Filter::UpstreamRequest::decodeResponseTrailers(Http::HeaderMapPtr&& trailers) {
   ScopeTrackerScopeState scope(&parent_.callbacks_->scope(), parent_.callbacks_->dispatcher());
 
   maybeEndDecode(true);
@@ -1591,7 +1591,7 @@ void Filter::UpstreamRequest::encodeTrailers(const Http::HeaderMap& trailers) {
     ASSERT(downstream_metadata_map_vector_.empty());
 
     ENVOY_STREAM_LOG(trace, "proxying trailers", *parent_.callbacks_);
-    request_encoder_->encodeTrailers(trailers);
+    request_encoder_->encodeRequestTrailers(trailers);
     upstream_timing_.onLastUpstreamTxByteSent(parent_.callbacks_->dispatcher().timeSource());
   }
 }
@@ -1739,8 +1739,8 @@ void Filter::UpstreamRequest::onPoolReady(Http::RequestStreamEncoder& request_en
   // If end_stream is set in headers, and there are metadata to send, delays end_stream. The case
   // only happens when decoding headers filters return ContinueAndEndStream.
   const bool delay_headers_end_stream = end_stream && !downstream_metadata_map_vector_.empty();
-  request_encoder.encodeHeaders(*parent_.downstream_headers_,
-                                end_stream && !delay_headers_end_stream);
+  request_encoder.encodeRequestHeaders(*parent_.downstream_headers_,
+                                       end_stream && !delay_headers_end_stream);
   calling_encode_headers_ = false;
 
   // It is possible to get reset in the middle of an encodeHeaders() call. This happens for
@@ -1769,7 +1769,7 @@ void Filter::UpstreamRequest::onPoolReady(Http::RequestStreamEncoder& request_en
     }
 
     if (encode_trailers_) {
-      request_encoder.encodeTrailers(*parent_.downstream_trailers_);
+      request_encoder.encodeRequestTrailers(*parent_.downstream_trailers_);
     }
 
     if (encode_complete_) {
@@ -1787,7 +1787,7 @@ ProdFilter::createRetryState(const RetryPolicy& policy, Http::HeaderMap& request
                                 priority);
 }
 
-void Filter::UpstreamRequest::setRequestEncoder(Http::StreamEncoder& request_encoder) {
+void Filter::UpstreamRequest::setRequestEncoder(Http::RequestStreamEncoder& request_encoder) {
   request_encoder_ = &request_encoder;
   // Now that there is an encoder, have the connection manager inform the manager when the
   // downstream buffers are overrun. This may result in immediate watermark callbacks referencing

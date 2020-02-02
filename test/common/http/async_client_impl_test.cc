@@ -72,7 +72,7 @@ public:
   MockAsyncClientStreamCallbacks stream_callbacks_;
   NiceMock<Upstream::MockClusterManager> cm_;
   NiceMock<MockRequestStreamEncoder> stream_encoder_;
-  StreamDecoder* response_decoder_{};
+  ResponseStreamDecoder* response_decoder_{};
   NiceMock<Event::MockTimer>* timer_;
   NiceMock<Event::MockDispatcher> dispatcher_;
   NiceMock<Runtime::MockLoader> runtime_;
@@ -93,7 +93,7 @@ TEST_F(AsyncClientImplTest, BasicStream) {
   Buffer::InstancePtr body{new Buffer::OwnedImpl("test body")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -106,7 +106,7 @@ TEST_F(AsyncClientImplTest, BasicStream) {
   headers.addCopy("x-forwarded-for", "127.0.0.1");
   headers.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), true));
 
   expectResponseHeaders(stream_callbacks_, 200, false);
@@ -120,7 +120,7 @@ TEST_F(AsyncClientImplTest, BasicStream) {
 
   response_decoder_->decode100ContinueHeaders(
       HeaderMapPtr(new TestHeaderMapImpl{{":status", "100"}}));
-  response_decoder_->decodeHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
+  response_decoder_->decodeResponseHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
   response_decoder_->decodeData(*body, true);
 
   EXPECT_EQ(
@@ -136,7 +136,7 @@ TEST_F(AsyncClientImplTest, Basic) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -148,14 +148,14 @@ TEST_F(AsyncClientImplTest, Basic) {
   copy.addCopy("x-forwarded-for", "127.0.0.1");
   copy.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&copy), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&copy), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(&data), true));
   expectSuccess(200);
 
   client_.send(std::move(message_), callbacks_, AsyncClient::RequestOptions());
 
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   response_decoder_->decodeData(data, true);
 
   EXPECT_EQ(
@@ -172,7 +172,7 @@ TEST_F(AsyncClientImplTracingTest, Basic) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -201,7 +201,7 @@ TEST_F(AsyncClientImplTracingTest, Basic) {
   EXPECT_CALL(*child_span, finishSpan());
 
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   response_decoder_->decodeData(data, true);
 }
 
@@ -211,7 +211,7 @@ TEST_F(AsyncClientImplTracingTest, BasicNamedChildSpan) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -240,7 +240,7 @@ TEST_F(AsyncClientImplTracingTest, BasicNamedChildSpan) {
   EXPECT_CALL(*child_span, finishSpan());
 
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   response_decoder_->decodeData(data, true);
 }
 
@@ -249,7 +249,7 @@ TEST_F(AsyncClientImplTest, BasicHashPolicy) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -269,7 +269,7 @@ TEST_F(AsyncClientImplTest, BasicHashPolicy) {
   copy.addCopy("x-forwarded-for", "127.0.0.1");
   copy.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&copy), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&copy), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(&data), true));
   expectSuccess(200);
 
@@ -280,7 +280,7 @@ TEST_F(AsyncClientImplTest, BasicHashPolicy) {
   client_.send(std::move(message_), callbacks_, options);
 
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   response_decoder_->decodeData(data, true);
 }
 
@@ -293,14 +293,14 @@ TEST_F(AsyncClientImplTest, Retry) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(&data), true));
 
   message_->headers().setReferenceEnvoyRetryOn(Headers::get().EnvoyRetryOnValues._5xx);
@@ -309,25 +309,25 @@ TEST_F(AsyncClientImplTest, Retry) {
   // Expect retry and retry timer create.
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "503"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), true);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), true);
 
   // Retry request.
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_copy->headers()), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_copy->headers()), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(&data), true));
   timer_->invokeCallback();
 
   // Normal response.
   expectSuccess(200);
   HeaderMapPtr response_headers2(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers2), true);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers2), true);
 }
 
 TEST_F(AsyncClientImplTest, RetryWithStream) {
@@ -336,7 +336,7 @@ TEST_F(AsyncClientImplTest, RetryWithStream) {
   Buffer::InstancePtr body{new Buffer::OwnedImpl("test body")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -345,7 +345,7 @@ TEST_F(AsyncClientImplTest, RetryWithStream) {
 
   TestHeaderMapImpl headers;
   HttpTestUtility::addDefaultHeaders(headers);
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), true));
 
   headers.setReferenceEnvoyRetryOn(Headers::get().EnvoyRetryOnValues._5xx);
@@ -357,18 +357,18 @@ TEST_F(AsyncClientImplTest, RetryWithStream) {
   // Expect retry and retry timer create.
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "503"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), true);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), true);
 
   // Retry request.
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), true));
   timer_->invokeCallback();
 
@@ -376,7 +376,7 @@ TEST_F(AsyncClientImplTest, RetryWithStream) {
   expectResponseHeaders(stream_callbacks_, 200, true);
   EXPECT_CALL(stream_callbacks_, onComplete());
   HeaderMapPtr response_headers2(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers2), true);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers2), true);
 }
 
 TEST_F(AsyncClientImplTest, MultipleStreams) {
@@ -384,7 +384,7 @@ TEST_F(AsyncClientImplTest, MultipleStreams) {
   Buffer::InstancePtr body{new Buffer::OwnedImpl("test body")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -392,7 +392,7 @@ TEST_F(AsyncClientImplTest, MultipleStreams) {
       }));
 
   TestHeaderMapImpl headers(message_->headers());
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), true));
 
   expectResponseHeaders(stream_callbacks_, 200, false);
@@ -410,7 +410,7 @@ TEST_F(AsyncClientImplTest, MultipleStreams) {
   MockAsyncClientStreamCallbacks stream_callbacks2;
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder2, cm_.conn_pool_.host_, stream_info_);
         response_decoder2 = &decoder;
@@ -434,7 +434,7 @@ TEST_F(AsyncClientImplTest, MultipleStreams) {
 
   // Finish stream 1.
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   response_decoder_->decodeData(*body, true);
 }
 
@@ -444,14 +444,14 @@ TEST_F(AsyncClientImplTest, MultipleRequests) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(&data), true));
 
   client_.send(std::move(message_), callbacks_, AsyncClient::RequestOptions());
@@ -463,7 +463,7 @@ TEST_F(AsyncClientImplTest, MultipleRequests) {
   StreamDecoder* response_decoder2{};
   MockAsyncClientCallbacks callbacks2;
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder2, cm_.conn_pool_.host_, stream_info_);
         response_decoder2 = &decoder;
@@ -479,7 +479,7 @@ TEST_F(AsyncClientImplTest, MultipleRequests) {
 
   // Finish request 1.
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   expectSuccess(200);
   response_decoder_->decodeData(data, true);
 }
@@ -490,14 +490,14 @@ TEST_F(AsyncClientImplTest, StreamAndRequest) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(&data), true));
 
   client_.send(std::move(message_), callbacks_, AsyncClient::RequestOptions());
@@ -508,7 +508,7 @@ TEST_F(AsyncClientImplTest, StreamAndRequest) {
   StreamDecoder* response_decoder2{};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder2, cm_.conn_pool_.host_, stream_info_);
         response_decoder2 = &decoder;
@@ -535,7 +535,7 @@ TEST_F(AsyncClientImplTest, StreamAndRequest) {
 
   // Finish request.
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   expectSuccess(200);
   response_decoder_->decodeData(data, true);
 }
@@ -547,14 +547,14 @@ TEST_F(AsyncClientImplTest, StreamWithTrailers) {
   TestHeaderMapImpl trailers{{"some", "request_trailer"}};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), false));
   EXPECT_CALL(stream_encoder_, encodeTrailers(HeaderMapEqualRef(&trailers)));
 
@@ -570,7 +570,7 @@ TEST_F(AsyncClientImplTest, StreamWithTrailers) {
   stream->sendTrailers(trailers);
 
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   response_decoder_->decodeData(*body, false);
   response_decoder_->decodeTrailers(HeaderMapPtr{new TestHeaderMapImpl{{"some", "trailer"}}});
 }
@@ -580,20 +580,20 @@ TEST_F(AsyncClientImplTest, Trailers) {
   Buffer::Instance& data = *message_->body();
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(&data), true));
   expectSuccess(200);
 
   client_.send(std::move(message_), callbacks_, AsyncClient::RequestOptions());
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   response_decoder_->decodeData(data, false);
   response_decoder_->decodeTrailers(HeaderMapPtr{new TestHeaderMapImpl{{"some", "trailer"}}});
 }
@@ -606,7 +606,7 @@ TEST_F(AsyncClientImplTest, ImmediateReset) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   expectSuccess(503);
 
   client_.send(std::move(message_), callbacks_, AsyncClient::RequestOptions());
@@ -621,7 +621,7 @@ TEST_F(AsyncClientImplTest, LocalResetAfterStreamStart) {
   Buffer::InstancePtr body{new Buffer::OwnedImpl("test body")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -634,7 +634,7 @@ TEST_F(AsyncClientImplTest, LocalResetAfterStreamStart) {
   headers.addCopy("x-forwarded-for", "127.0.0.1");
   headers.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), false));
 
   TestHeaderMapImpl expected_headers{{":status", "200"}};
@@ -646,7 +646,7 @@ TEST_F(AsyncClientImplTest, LocalResetAfterStreamStart) {
   stream->sendHeaders(headers, false);
   stream->sendData(*body, false);
 
-  response_decoder_->decodeHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
+  response_decoder_->decodeResponseHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
   response_decoder_->decodeData(*body, false);
 
   stream->reset();
@@ -656,7 +656,7 @@ TEST_F(AsyncClientImplTest, SendDataAfterRemoteClosure) {
   Buffer::InstancePtr body{new Buffer::OwnedImpl("test body")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -669,7 +669,7 @@ TEST_F(AsyncClientImplTest, SendDataAfterRemoteClosure) {
   headers.addCopy("x-forwarded-for", "127.0.0.1");
   headers.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
 
   TestHeaderMapImpl expected_headers{{":status", "200"}};
   EXPECT_CALL(stream_callbacks_, onHeaders_(HeaderMapEqualRef(&expected_headers), false));
@@ -679,7 +679,7 @@ TEST_F(AsyncClientImplTest, SendDataAfterRemoteClosure) {
   AsyncClient::Stream* stream = client_.start(stream_callbacks_, AsyncClient::StreamOptions());
   stream->sendHeaders(headers, false);
 
-  response_decoder_->decodeHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
+  response_decoder_->decodeResponseHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
   response_decoder_->decodeData(*body, true);
 
   EXPECT_CALL(stream_encoder_, encodeData(_, _)).Times(0);
@@ -690,7 +690,7 @@ TEST_F(AsyncClientImplTest, SendTrailersRemoteClosure) {
   Buffer::InstancePtr body{new Buffer::OwnedImpl("test body")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -706,7 +706,7 @@ TEST_F(AsyncClientImplTest, SendTrailersRemoteClosure) {
   TestHeaderMapImpl trailers;
   trailers.addCopy("x-test-trailer", "1");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
 
   TestHeaderMapImpl expected_headers{{":status", "200"}};
   EXPECT_CALL(stream_callbacks_, onHeaders_(HeaderMapEqualRef(&expected_headers), false));
@@ -716,7 +716,7 @@ TEST_F(AsyncClientImplTest, SendTrailersRemoteClosure) {
   AsyncClient::Stream* stream = client_.start(stream_callbacks_, AsyncClient::StreamOptions());
   stream->sendHeaders(headers, false);
 
-  response_decoder_->decodeHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
+  response_decoder_->decodeResponseHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
   response_decoder_->decodeData(*body, true);
 
   EXPECT_CALL(stream_encoder_, encodeTrailers(_)).Times(0);
@@ -741,7 +741,7 @@ TEST_F(AsyncClientImplTest, ResetInOnHeaders) {
   headers.addCopy("x-forwarded-for", "127.0.0.1");
   headers.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), false));
 
   AsyncClient::Stream* stream = client_.start(stream_callbacks_, AsyncClient::StreamOptions());
@@ -764,7 +764,7 @@ TEST_F(AsyncClientImplTest, RemoteResetAfterStreamStart) {
   Buffer::InstancePtr body{new Buffer::OwnedImpl("test body")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -777,7 +777,7 @@ TEST_F(AsyncClientImplTest, RemoteResetAfterStreamStart) {
   headers.addCopy("x-forwarded-for", "127.0.0.1");
   headers.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), false));
 
   TestHeaderMapImpl expected_headers{{":status", "200"}};
@@ -789,7 +789,7 @@ TEST_F(AsyncClientImplTest, RemoteResetAfterStreamStart) {
   stream->sendHeaders(headers, false);
   stream->sendData(*body, false);
 
-  response_decoder_->decodeHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
+  response_decoder_->decodeResponseHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
   response_decoder_->decodeData(*body, false);
 
   stream_encoder_.getStream().resetStream(StreamResetReason::RemoteReset);
@@ -797,19 +797,19 @@ TEST_F(AsyncClientImplTest, RemoteResetAfterStreamStart) {
 
 TEST_F(AsyncClientImplTest, ResetAfterResponseStart) {
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   EXPECT_CALL(callbacks_, onFailure(_));
 
   client_.send(std::move(message_), callbacks_, AsyncClient::RequestOptions());
   HeaderMapPtr response_headers(new TestHeaderMapImpl{{":status", "200"}});
-  response_decoder_->decodeHeaders(std::move(response_headers), false);
+  response_decoder_->decodeResponseHeaders(std::move(response_headers), false);
   stream_encoder_.getStream().resetStream(StreamResetReason::RemoteReset);
 }
 
@@ -821,7 +821,7 @@ TEST_F(AsyncClientImplTest, ResetStream) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   EXPECT_CALL(stream_encoder_.stream_, resetStream(_));
   EXPECT_CALL(stream_callbacks_, onReset());
 
@@ -838,7 +838,7 @@ TEST_F(AsyncClientImplTest, CancelRequest) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   EXPECT_CALL(stream_encoder_.stream_, resetStream(_));
 
   AsyncClient::Request* request =
@@ -884,7 +884,7 @@ TEST_F(AsyncClientImplTest, DestroyWithActiveStream) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), false));
   EXPECT_CALL(stream_encoder_.stream_, resetStream(_));
   EXPECT_CALL(stream_callbacks_, onReset());
   AsyncClient::Stream* stream = client_.start(stream_callbacks_, AsyncClient::StreamOptions());
@@ -899,7 +899,7 @@ TEST_F(AsyncClientImplTest, DestroyWithActiveRequest) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   EXPECT_CALL(stream_encoder_.stream_, resetStream(_));
   EXPECT_CALL(callbacks_, onFailure(_));
   client_.send(std::move(message_), callbacks_, AsyncClient::RequestOptions());
@@ -977,7 +977,7 @@ TEST_F(AsyncClientImplTest, StreamTimeout) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   EXPECT_CALL(*timer_, enableTimer(std::chrono::milliseconds(40), _));
   EXPECT_CALL(stream_encoder_.stream_, resetStream(_));
@@ -1012,7 +1012,7 @@ TEST_F(AsyncClientImplTest, StreamTimeoutHeadReply) {
 
   MessagePtr message{new RequestMessageImpl()};
   HttpTestUtility::addDefaultHeaders(message->headers(), "HEAD");
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message->headers()), true));
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   EXPECT_CALL(*timer_, enableTimer(std::chrono::milliseconds(40), _));
   EXPECT_CALL(stream_encoder_.stream_, resetStream(_));
@@ -1036,7 +1036,7 @@ TEST_F(AsyncClientImplTest, RequestTimeout) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   expectSuccess(504);
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   EXPECT_CALL(*timer_, enableTimer(std::chrono::milliseconds(40), _));
@@ -1063,7 +1063,7 @@ TEST_F(AsyncClientImplTracingTest, RequestTimeout) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   expectSuccess(504);
 
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
@@ -1098,7 +1098,7 @@ TEST_F(AsyncClientImplTest, DisableTimer) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   EXPECT_CALL(*timer_, enableTimer(std::chrono::milliseconds(200), _));
   EXPECT_CALL(*timer_, disableTimer());
@@ -1117,7 +1117,7 @@ TEST_F(AsyncClientImplTest, DisableTimerWithStream) {
         return nullptr;
       }));
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&message_->headers()), true));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&message_->headers()), true));
   timer_ = new NiceMock<Event::MockTimer>(&dispatcher_);
   EXPECT_CALL(*timer_, enableTimer(std::chrono::milliseconds(40), _));
   EXPECT_CALL(*timer_, disableTimer());
@@ -1135,7 +1135,7 @@ TEST_F(AsyncClientImplTest, MultipleDataStream) {
   Buffer::InstancePtr body2{new Buffer::OwnedImpl("test body2")};
 
   EXPECT_CALL(cm_.conn_pool_, newStream(_, _))
-      .WillOnce(Invoke([&](StreamDecoder& decoder,
+      .WillOnce(Invoke([&](ResponseStreamDecoder& decoder,
                            ConnectionPool::Callbacks& callbacks) -> ConnectionPool::Cancellable* {
         callbacks.onPoolReady(stream_encoder_, cm_.conn_pool_.host_, stream_info_);
         response_decoder_ = &decoder;
@@ -1148,7 +1148,7 @@ TEST_F(AsyncClientImplTest, MultipleDataStream) {
   headers.addCopy("x-forwarded-for", "127.0.0.1");
   headers.addCopy(":scheme", "http");
 
-  EXPECT_CALL(stream_encoder_, encodeHeaders(HeaderMapEqualRef(&headers), false));
+  EXPECT_CALL(stream_encoder_, encodeRequestHeaders(HeaderMapEqualRef(&headers), false));
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body.get()), false));
 
   TestHeaderMapImpl expected_headers{{":status", "200"}};
@@ -1159,7 +1159,7 @@ TEST_F(AsyncClientImplTest, MultipleDataStream) {
   stream->sendHeaders(headers, false);
   stream->sendData(*body, false);
 
-  response_decoder_->decodeHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
+  response_decoder_->decodeResponseHeaders(HeaderMapPtr(new TestHeaderMapImpl{{":status", "200"}}), false);
   response_decoder_->decodeData(*body, false);
 
   EXPECT_CALL(stream_encoder_, encodeData(BufferEqual(body2.get()), true));

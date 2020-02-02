@@ -32,7 +32,7 @@ void setupStream(ClientCodecFrameInjector& codec, TestClientConnectionImpl& conn
   // Setup a single stream to inject frames as a reply to.
   TestHeaderMapImpl request_headers;
   HttpTestUtility::addDefaultHeaders(request_headers);
-  codec.request_encoder_->encodeHeaders(request_headers, true);
+  codec.request_encoder_->encodeRequestHeaders(request_headers, true);
 }
 
 // Validate that a simple Huffman encoded request HEADERS frame can be decoded.
@@ -65,7 +65,8 @@ TEST_F(RequestFrameCommentTest, SimpleExampleHuffman) {
   TestHeaderMapImpl expected_headers;
   HttpTestUtility::addDefaultHeaders(expected_headers);
   expected_headers.addCopy("foo", "barbaz");
-  EXPECT_CALL(codec.request_decoder_, decodeHeaders_(HeaderMapEqual(&expected_headers), true));
+  EXPECT_CALL(codec.request_decoder_,
+              decodeRequestHeaders_(HeaderMapEqual(&expected_headers), true));
   codec.write(header.frame(), connection);
 }
 
@@ -98,7 +99,8 @@ TEST_F(ResponseFrameCommentTest, SimpleExampleHuffman) {
   TestHeaderMapImpl expected_headers;
   expected_headers.addCopy(":status", "200");
   expected_headers.addCopy("compression", "test");
-  EXPECT_CALL(codec.response_decoder_, decodeHeaders_(HeaderMapEqual(&expected_headers), true));
+  EXPECT_CALL(codec.response_decoder_,
+              decodeResponseHeaders_(HeaderMapEqual(&expected_headers), true));
   codec.write(header.frame(), connection);
 }
 
@@ -141,7 +143,8 @@ TEST_F(RequestFrameCommentTest, SimpleExamplePlain) {
   TestHeaderMapImpl expected_headers;
   HttpTestUtility::addDefaultHeaders(expected_headers);
   expected_headers.addCopy("foo", "barbaz");
-  EXPECT_CALL(codec.request_decoder_, decodeHeaders_(HeaderMapEqual(&expected_headers), true));
+  EXPECT_CALL(codec.request_decoder_,
+              decodeRequestHeaders_(HeaderMapEqual(&expected_headers), true));
   codec.write(header.frame(), connection);
 }
 
@@ -176,7 +179,8 @@ TEST_F(ResponseFrameCommentTest, SimpleExamplePlain) {
   TestHeaderMapImpl expected_headers;
   expected_headers.addCopy(":status", "200");
   expected_headers.addCopy("compression", "test");
-  EXPECT_CALL(codec.response_decoder_, decodeHeaders_(HeaderMapEqual(&expected_headers), true));
+  EXPECT_CALL(codec.response_decoder_,
+              decodeResponseHeaders_(HeaderMapEqual(&expected_headers), true));
   codec.write(header.frame(), connection);
 }
 
@@ -202,7 +206,7 @@ TEST_F(RequestFrameCommentTest, SingleByteNulCrLfInHeaderFrame) {
       codec.write(WellKnownFrames::defaultSettingsFrame(), connection);
       codec.write(WellKnownFrames::initialWindowUpdateFrame(), connection);
       try {
-        EXPECT_CALL(codec.request_decoder_, decodeHeaders_(_, _)).Times(AnyNumber());
+        EXPECT_CALL(codec.request_decoder_, decodeRequestHeaders_(_, _)).Times(AnyNumber());
         EXPECT_CALL(codec.server_stream_callbacks_, onResetStream(_, _)).Times(AnyNumber());
         codec.write(header.frame(), connection);
       } catch (const CodecProtocolException& e) {
@@ -236,7 +240,7 @@ TEST_F(ResponseFrameCommentTest, SingleByteNulCrLfInHeaderFrame) {
       codec.write(WellKnownFrames::defaultSettingsFrame(), connection);
       codec.write(WellKnownFrames::initialWindowUpdateFrame(), connection);
       try {
-        EXPECT_CALL(codec.response_decoder_, decodeHeaders_(_, _)).Times(AnyNumber());
+        EXPECT_CALL(codec.response_decoder_, decodeResponseHeaders_(_, _)).Times(AnyNumber());
         EXPECT_CALL(codec.client_stream_callbacks_, onResetStream(_, _)).Times(AnyNumber());
         codec.write(header.frame(), connection);
       } catch (const CodecProtocolException& e) {
@@ -270,7 +274,7 @@ TEST_F(RequestFrameCommentTest, SingleByteNulCrLfInHeaderField) {
       codec.write(WellKnownFrames::defaultSettingsFrame(), connection);
       codec.write(WellKnownFrames::initialWindowUpdateFrame(), connection);
       bool stream_reset = false;
-      EXPECT_CALL(codec.request_decoder_, decodeHeaders_(_, _)).Times(0);
+      EXPECT_CALL(codec.request_decoder_, decodeRequestHeaders_(_, _)).Times(0);
       EXPECT_CALL(codec.server_stream_callbacks_, onResetStream(_, _))
           .WillRepeatedly(InvokeWithoutArgs([&stream_reset] { stream_reset = true; }));
       bool codec_exception = false;
@@ -309,7 +313,7 @@ TEST_F(ResponseFrameCommentTest, SingleByteNulCrLfInHeaderField) {
       codec.write(WellKnownFrames::defaultSettingsFrame(), connection);
       codec.write(WellKnownFrames::initialWindowUpdateFrame(), connection);
       bool stream_reset = false;
-      EXPECT_CALL(codec.response_decoder_, decodeHeaders_(_, _)).Times(0);
+      EXPECT_CALL(codec.response_decoder_, decodeResponseHeaders_(_, _)).Times(0);
       EXPECT_CALL(codec.client_stream_callbacks_, onResetStream(_, _))
           .WillRepeatedly(InvokeWithoutArgs([&stream_reset] { stream_reset = true; }));
       bool codec_exception = false;

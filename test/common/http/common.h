@@ -54,7 +54,7 @@ struct ConnPoolCallbacks : public Http::ConnectionPool::Callbacks {
 
   ReadyWatcher pool_failure_;
   ReadyWatcher pool_ready_;
-  Http::StreamEncoder* outer_encoder_{};
+  Http::RequestStreamEncoder* outer_encoder_{};
   Upstream::HostDescriptionConstSharedPtr host_;
 };
 

@@ -393,11 +393,13 @@ private:
     }
 
     // Http::StreamDecoder
-    void decode100ContinueHeaders(Http::HeaderMapPtr&& headers) override;
-    void decodeHeaders(Http::HeaderMapPtr&& headers, bool end_stream) override;
     void decodeData(Buffer::Instance& data, bool end_stream) override;
-    void decodeTrailers(Http::HeaderMapPtr&& trailers) override;
     void decodeMetadata(Http::MetadataMapPtr&& metadata_map) override;
+
+    // Http::ResponseStreamDecoder
+    void decode100ContinueHeaders(Http::HeaderMapPtr&& headers) override;
+    void decodeResponseHeaders(Http::HeaderMapPtr&& headers, bool end_stream) override;
+    void decodeResponseTrailers(Http::HeaderMapPtr&& trailers) override;
 
     // Http::StreamCallbacks
     void onResetStream(Http::StreamResetReason reason,
@@ -443,7 +445,7 @@ private:
                      Upstream::HostDescriptionConstSharedPtr host,
                      const StreamInfo::StreamInfo& info) override;
 
-    void setRequestEncoder(Http::StreamEncoder& request_encoder);
+    void setRequestEncoder(Http::RequestStreamEncoder& request_encoder);
     void clearRequestEncoder();
 
     struct DownstreamWatermarkManager : public Http::DownstreamWatermarkCallbacks {
@@ -463,7 +465,7 @@ private:
     bool grpc_rq_success_deferred_;
     Event::TimerPtr per_try_timeout_;
     Http::ConnectionPool::Cancellable* conn_pool_stream_handle_{};
-    Http::StreamEncoder* request_encoder_{};
+    Http::RequestStreamEncoder* request_encoder_{};
     absl::optional<Http::StreamResetReason> deferred_reset_reason_;
     Buffer::WatermarkBufferPtr buffered_request_body_;
     Upstream::HostDescriptionConstSharedPtr upstream_host_;

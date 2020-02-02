@@ -705,7 +705,7 @@ const Network::Connection* ConnectionManagerImpl::ActiveStream::connection() {
 //
 // TODO(alyssawilk) all the calls here should be audited for order priority,
 // e.g. many early returns do not currently handle connection: close properly.
-void ConnectionManagerImpl::ActiveStream::decodeHeaders(HeaderMapPtr&& headers, bool end_stream) {
+void ConnectionManagerImpl::ActiveStream::decodeRequestHeaders(HeaderMapPtr&& headers, bool end_stream) {
   ScopeTrackerScopeState scope(this,
                                connection_manager_.read_callbacks_->connection().dispatcher());
   request_headers_ = std::move(headers);
@@ -1187,7 +1187,7 @@ MetadataMapVector& ConnectionManagerImpl::ActiveStream::addDecodedMetadata() {
   return *getRequestMetadataMapVector();
 }
 
-void ConnectionManagerImpl::ActiveStream::decodeTrailers(HeaderMapPtr&& trailers) {
+void ConnectionManagerImpl::ActiveStream::decodeRequestTrailers(HeaderMapPtr&& trailers) {
   ScopeTrackerScopeState scope(this,
                                connection_manager_.read_callbacks_->connection().dispatcher());
   resetIdleTimer();
@@ -1629,7 +1629,7 @@ void ConnectionManagerImpl::ActiveStream::encodeHeaders(ActiveStreamEncoderFilte
 
   // Now actually encode via the codec.
   stream_info_.onFirstDownstreamTxByteSent();
-  response_encoder_->encodeHeaders(
+  response_encoder_->encodeResponseHeaders(
       headers,
       encoding_headers_only_ || (end_stream && continue_data_entry == encoder_filters_.end()));
   if (continue_data_entry != encoder_filters_.end()) {
@@ -1820,7 +1820,7 @@ void ConnectionManagerImpl::ActiveStream::encodeTrailers(ActiveStreamEncoderFilt
 
   ENVOY_STREAM_LOG(debug, "encoding trailers via codec:\n{}", *this, trailers);
 
-  response_encoder_->encodeTrailers(trailers);
+  response_encoder_->encodeResponseTrailers(trailers);
   maybeEndEncode(true);
 }
 
@@ -2304,7 +2304,7 @@ bool ConnectionManagerImpl::ActiveStreamDecoderFilter::recreateStream() {
   // reference anything beyond this point.
   parent_.connection_manager_.doEndStream(this->parent_);
 
-  StreamDecoder& new_stream = parent_.connection_manager_.newStream(*response_encoder, true);
+  RequestStreamDecoder& new_stream = parent_.connection_manager_.newStream(*response_encoder, true);
   // We don't need to copy over the old parent FilterState from the old StreamInfo if it did not
   // store any objects with a LifeSpan at or above DownstreamRequest. This is to avoid unnecessary
   // heap allocation.
@@ -2316,7 +2316,7 @@ bool ConnectionManagerImpl::ActiveStreamDecoderFilter::recreateStream() {
             StreamInfo::FilterState::LifeSpan::FilterChain);
   }
 
-  new_stream.decodeHeaders(std::move(request_headers), true);
+  new_stream.decodeRequestHeaders(std::move(request_headers), true);
   return true;
 }
 
@@ -2403,7 +2403,7 @@ void ConnectionManagerImpl::ActiveStreamEncoderFilter::responseDataTooLarge() {
           [&](HeaderMapPtr&& response_headers, bool end_stream) -> void {
             parent_.chargeStats(*response_headers);
             parent_.response_headers_ = std::move(response_headers);
-            parent_.response_encoder_->encodeHeaders(*parent_.response_headers_, end_stream);
+            parent_.response_encoder_->encodeResponseHeaders(*parent_.response_headers_, end_stream);
             parent_.state_.local_complete_ = end_stream;
           },
           [&](Buffer::Instance& data, bool end_stream) -> void {
